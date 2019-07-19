@@ -1,4 +1,4 @@
-use stelar::Extract;
+use stelar::{Extract, TokenStream};
 
 #[derive(Debug)]
 enum Operation {
@@ -54,12 +54,11 @@ impl Token {
 }
 
 impl Extract<String> for Token {
-    type Error = ();
-    fn extract(input: &mut String) -> Result<Option<Self>, Self::Error> {
+    fn extract(input: &mut String) -> Option<Self> {
         let mut possible = None;
         let mut max_valid = 1;
         if input.len() == 0 {
-            return Ok(None);
+            return None;
         } else if input.len() == 1 {
             if Token::is_skip(input) {
                 possible = Some(3);
@@ -97,20 +96,20 @@ impl Extract<String> for Token {
         let mut token = input.split_off(max_valid);
         std::mem::swap(&mut token, input);
 
-        Ok(match possible {
+        match possible {
             Some(0) => Some(Token::Float(token.parse().unwrap())),
             Some(1) => Some(Token::Integer(token.parse().unwrap())),
             Some(2) => Some(Token::Operation(Operation::from_string(&token).unwrap())),
             Some(3) => Some(Token::Skip),
             None => None,
             _ => unreachable!(),
-        })
+        }
     }
 }
 
 fn main() {
-    let mut input = "9 +    -    12.46 *".to_string();
-    while let Ok(Some(token)) = Token::extract(&mut input) {
+    let input = "9 +    -    12.46 *".to_string();
+    for token in TokenStream::<_, Token>::new(input) {
         println!("Token: {:?}", token);
     }
 }
