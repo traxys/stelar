@@ -1,7 +1,6 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::fmt::Debug;
 use std::hash::Hash;
 
 ///! Trait to extract values out of a input storage
@@ -183,39 +182,28 @@ where
     symbols
 }
 
-#[derive(Debug)]
-struct GotoSets<T, NT>
-where
-    T: PartialEq + Eq + Hash,
-    NT: PartialEq + Eq + Hash,
-{
-    pub sets: Vec<HashSet<DotRule<T, NT>>>,
-    pub gotos: HashMap<(usize, Symbol<T, NT>), usize>,
-}
+type ItemSets<T, NT> = HashSet<DotRule<T, NT>>;
 
 fn generate_sets<T, NT>(
     start_rule: Rule<T, NT>,
     rules: &RuleList<T, NT>,
     symbols: &HashSet<Symbol<T, NT>>,
-) -> GotoSets<T, NT>
+) -> Vec<ItemSets<T, NT>>
 where
-    T: PartialEq + Eq + Clone + Hash + Debug,
-    NT: PartialEq + Eq + Clone + Hash + Debug,
+    T: PartialEq + Eq + Clone + Hash,
+    NT: PartialEq + Eq + Clone + Hash,
 {
     let mut sets = vec![];
     let mut initial_rule = HashSet::new();
     initial_rule.insert(DotRule::new(start_rule));
     sets.push(closure(initial_rule, rules));
-    let mut gotos = HashMap::new();
     loop {
         let mut to_add = Vec::new();
-        let set_count = sets.len();
-        for (index, set) in sets.iter().enumerate() {
+        for set in &sets {
             for sym in symbols {
                 let goto_s = goto(&set, sym.clone(), rules);
                 if !goto_s.is_empty() && !sets.contains(&goto_s) && !to_add.contains(&goto_s) {
                     to_add.push(goto_s);
-                    gotos.insert((index, sym.clone()), set_count + (to_add.len() - 1));
                 }
             }
         }
@@ -224,7 +212,7 @@ where
         }
         sets.append(&mut to_add);
     }
-    GotoSets { sets, gotos }
+    sets
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -247,12 +235,16 @@ where
     T: Clone + PartialEq + Eq + Hash,
     NT: Clone + PartialEq + Eq + Hash,
 {
-    pub fn new(rules: Vec<Rule<T, NT>>) -> Result<ParseTable<T, NT>, ParseTableError> {
+    pub fn new(
+        rules: Vec<Rule<T, NT>>,
+        start_rule: Rule<T, NT>,
+    ) -> Result<ParseTable<T, NT>, ParseTableError> {
         if let Some(e) = sanity_check(&rules) {
             return Err(ParseTableError::InvalidGrammar(e));
         };
-        let _folded = fold_rules(rules.clone());
-        let _symbols = get_all_symbols(&rules);
+        let folded = fold_rules(rules.clone());
+        let symbols = get_all_symbols(&rules);
+        let _sets = generate_sets(start_rule, &folded, &symbols);
         Ok(ParseTable {
             rules,
             table: HashMap::new(),
@@ -459,7 +451,7 @@ mod tests {
             panic!();
         }
         for set in expected_sets {
-            if !sets.sets.contains(&set) {
+            if !sets.contains(&set) {
                 panic!("Set {:?} is not present", set);
             }
         }
