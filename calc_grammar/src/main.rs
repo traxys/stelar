@@ -109,7 +109,10 @@ impl Extract<String> for Token {
 
 fn main() {
     let input = "9 +    -    12.46 *".to_string();
-    for token in TokenStream::<_, Token>::new(input) {
+    for token in
+        TokenStream::<_, Token>::new(input)
+            .filter(|t| if let Token::Skip = t { false } else { true })
+    {
         println!("Token: {:?}", token);
     }
 }
