@@ -444,10 +444,10 @@ mod tests {
         set.insert(dot_rule_in_pos(extended_grammar[5].clone(), 3));
         expected_sets.push(set);
 
-        if expected_sets.len() != sets.sets.len() {
+        if expected_sets.len() != sets.len() {
             eprintln!("Expected {:?}", expected_sets);
             eprintln!("------------------------------------");
-            eprintln!("Got {:?}", sets.sets);
+            eprintln!("Got {:?}", sets);
             panic!();
         }
         for set in expected_sets {
