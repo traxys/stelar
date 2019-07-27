@@ -52,6 +52,7 @@ pub enum Action {
 #[derive(Hash, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Rule<T, NT> {
+    pub index: usize,
     pub lhs: NT,
     pub rhs: Vec<Symbol<T, NT>>,
 }
@@ -59,6 +60,7 @@ pub struct Rule<T, NT> {
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 struct DotRule<T, NT> {
+    pub index: usize,
     pub lhs: NT,
     pub before: Vec<Symbol<T, NT>>,
     pub after: Vec<Symbol<T, NT>>,
@@ -83,11 +85,15 @@ impl<T, NT> DotRule<T, NT> {
             before: Vec::new(),
             after: rule.rhs,
             lhs: rule.lhs,
+            index: rule.index,
         }
+    }
+    fn is_at_end(&self) -> bool {
+        self.after.is_empty()
     }
 }
 
-type RuleList<T, NT> = HashMap<NT, Vec<Vec<Symbol<T, NT>>>>;
+type RuleList<T, NT> = HashMap<NT, Vec<(usize, Vec<Symbol<T, NT>>)>>;
 
 fn fold_rules<T, NT>(rules: Vec<Rule<T, NT>>) -> RuleList<T, NT>
 where
@@ -98,7 +104,7 @@ where
         folded
             .entry(rule.lhs)
             .or_insert_with(Vec::new)
-            .push(rule.rhs);
+            .push((rule.index, rule.rhs));
     }
     folded
 }
@@ -110,10 +116,11 @@ where
 {
     let mut closed = HashSet::new();
     if let Some(Symbol::NonTerminal(s)) = item.after_dot() {
-        for rule in rules.get(&s).unwrap() {
+        for (rule_index, rule) in rules.get(&s).unwrap() {
             closed.insert(DotRule::new(Rule {
                 lhs: s.clone(),
                 rhs: rule.clone(),
+                index: *rule_index,
             }));
         }
     }
@@ -181,8 +188,124 @@ where
     }
     symbols
 }
+fn separate_symbols<T, NT>(rules: &Vec<Rule<T, NT>>) -> (HashSet<T>, HashSet<NT>)
+where
+    T: PartialEq + Eq + Clone + Hash,
+    NT: PartialEq + Eq + Clone + Hash,
+{
+    let mut terminals = HashSet::new();
+    let mut non_terminals = HashSet::new();
+    for rule in rules {
+        non_terminals.insert(rule.lhs.clone());
+        for symbol in &rule.rhs {
+            match symbol {
+                Symbol::NonTerminal(nt) => non_terminals.insert(nt.clone()),
+                Symbol::Terminal(t) => terminals.insert(t.clone()),
+            };
+        }
+    }
+    (terminals, non_terminals)
+}
+
+fn follow_sets<T, NT>(rules: &RuleList<T, NT>) -> HashMap<NT, T>
+where
+    NT: PartialEq + Eq + Hash + Clone,
+    T: Clone,
+{
+    HashMap::new()
+}
+fn is_nullable<T, NT>(non_terminal: &NT, rules: &RuleList<T, NT>) -> bool
+where
+    NT: PartialEq + Eq + Hash,
+{
+    match rules.get(non_terminal) {
+        Some(r) => {
+            for (_, rule) in r {
+                if rule.is_empty() {
+                    return true;
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+fn first_set<T, NT>(symbol: &Symbol<T, NT>, rules: &RuleList<T, NT>) -> HashSet<T>
+where
+    T: Hash + Clone + PartialEq + Eq,
+    NT: Hash + Clone + PartialEq + Eq,
+{
+    let mut set = HashSet::new();
+    match symbol {
+        Symbol::Terminal(t) => {
+            set.insert(t.clone());
+        }
+        Symbol::NonTerminal(_nt) => (),
+    }
+    set
+}
+fn first_non_terminal<T, NT>(nt: &NT, rules: &RuleList<T, NT>) -> (HashSet<T>, HashSet<NT>)
+where
+    T: Hash + Clone + PartialEq + Eq,
+    NT: Hash + Clone + PartialEq + Eq,
+{
+    let mut terminals = HashSet::new();
+    let mut non_terminals = HashSet::new();
+    if let Some(nt_rules) = rules.get(nt) {
+        for (_, rule) in nt_rules {
+            for sym in rule {
+                match sym {
+                    Symbol::NonTerminal(nt) => {
+                        non_terminals.insert(nt.clone());
+                        if !is_nullable(nt, rules) {
+                            break;
+                        }
+                    }
+                    Symbol::Terminal(t) => {
+                        terminals.insert(t.clone());
+                        break;
+                    }
+                }
+            }
+        }
+    };
+    (terminals, non_terminals)
+}
 
 type ItemSets<T, NT> = HashSet<DotRule<T, NT>>;
+
+#[derive(Debug)]
+pub enum ActionTableError {
+    ShiftReduceConflict,
+}
+
+fn generate_action_table<T, NT>(
+    goto_sets: &Vec<ItemSets<T, NT>>,
+    rules: &RuleList<T, NT>,
+    terminals: &HashSet<T>,
+) -> Result<HashMap<(usize, Option<T>), Action>, ActionTableError>
+where
+    T: Hash + Clone + PartialEq + Eq,
+    NT: Hash + Clone + PartialEq + Eq,
+{
+    // TODO: Do reduce
+    let mut table = HashMap::new();
+    for (set_index, set) in goto_sets.iter().enumerate() {
+        for terminal in terminals {
+            let goto_s = goto(set, Symbol::Terminal(terminal.clone()), rules);
+            if !goto_s.is_empty() {
+                let goto_index = goto_sets.iter().position(|s| *s == goto_s).unwrap();
+                let trans = (set_index, Some(terminal.clone()));
+                if let Some(Action::Reduce(_)) = table.get(&trans) {
+                    return Err(ActionTableError::ShiftReduceConflict);
+                }
+                table.insert(trans, Action::Shift(goto_index));
+            }
+        }
+    }
+    Ok(table)
+}
 
 fn generate_sets<T, NT>(
     start_rule: Rule<T, NT>,
@@ -221,7 +344,8 @@ where
     T: Clone + PartialEq + Eq + Hash,
     NT: Clone + PartialEq + Eq + Hash,
 {
-    table: HashMap<(usize, NT), Action>,
+    goto_table: HashMap<(usize, NT), usize>,
+    action_table: HashMap<(usize, Option<T>), Action>,
     pub rules: Vec<Rule<T, NT>>,
 }
 
@@ -244,10 +368,12 @@ where
         };
         let folded = fold_rules(rules.clone());
         let symbols = get_all_symbols(&rules);
+        let (terminals, non_terminals) = separate_symbols(&rules);
         let _sets = generate_sets(start_rule, &folded, &symbols);
         Ok(ParseTable {
             rules,
-            table: HashMap::new(),
+            action_table: HashMap::new(),
+            goto_table: HashMap::new(),
         })
     }
 }
@@ -311,6 +437,7 @@ mod tests {
     #[test]
     fn invalid_grammar() {
         let grammar = vec![Rule {
+            index: 0,
             lhs: NT::E,
             rhs: vec![Symbol::NonTerminal(NT::F), Symbol::Terminal(T::Id)],
         }];
@@ -365,6 +492,7 @@ mod tests {
     #[test]
     fn test_generate_sets() {
         let mut extended_grammar = vec![Rule {
+            index: 0,
             lhs: NT::Ext,
             rhs: vec![Symbol::NonTerminal(NT::E)],
         }];
@@ -462,6 +590,7 @@ mod tests {
         let folded = fold_rules(test_grammar.clone());
         let mut set = HashSet::new();
         let mut item = DotRule::new(Rule {
+            index: 5,
             lhs: NT::F,
             rhs: vec![
                 Symbol::Terminal(T::LParen),
@@ -487,6 +616,7 @@ mod tests {
     lazy_static! {
         static ref test_grammar: Vec<Rule<T, NT>> = vec![
             Rule {
+                index: 1,
                 lhs: NT::E,
                 rhs: vec![
                     Symbol::NonTerminal(NT::E),
@@ -495,10 +625,12 @@ mod tests {
                 ],
             },
             Rule {
+                index: 2,
                 lhs: NT::E,
                 rhs: vec![Symbol::NonTerminal(NT::T)],
             },
             Rule {
+                index: 3,
                 lhs: NT::T,
                 rhs: vec![
                     Symbol::NonTerminal(NT::T),
@@ -507,10 +639,12 @@ mod tests {
                 ],
             },
             Rule {
+                index: 4,
                 lhs: NT::T,
                 rhs: vec![Symbol::NonTerminal(NT::F)],
             },
             Rule {
+                index: 5,
                 lhs: NT::F,
                 rhs: vec![
                     Symbol::Terminal(T::LParen),
@@ -519,6 +653,7 @@ mod tests {
                 ],
             },
             Rule {
+                index: 6,
                 lhs: NT::F,
                 rhs: vec![Symbol::Terminal(T::Id)],
             },
