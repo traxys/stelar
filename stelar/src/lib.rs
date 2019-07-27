@@ -241,36 +241,43 @@ where
         Symbol::Terminal(t) => {
             set.insert(t.clone());
         }
-        Symbol::NonTerminal(_nt) => (),
+        Symbol::NonTerminal(nt) => {
+            let mut done = HashSet::new();
+            set = recurse_first(nt, rules, &mut done);
+        }
     }
     set
 }
-fn first_non_terminal<T, NT>(nt: &NT, rules: &RuleList<T, NT>) -> (HashSet<T>, HashSet<NT>)
+
+fn recurse_first<T, NT>(nt: &NT, rules: &RuleList<T, NT>, done_nt: &mut HashSet<NT>) -> HashSet<T>
 where
     T: Hash + Clone + PartialEq + Eq,
     NT: Hash + Clone + PartialEq + Eq,
 {
-    let mut terminals = HashSet::new();
-    let mut non_terminals = HashSet::new();
+    let mut result = HashSet::new();
+    done_nt.insert(nt.clone());
     if let Some(nt_rules) = rules.get(nt) {
         for (_, rule) in nt_rules {
             for sym in rule {
                 match sym {
+                    Symbol::Terminal(t) => {
+                        result.insert(t.clone());
+                        break;
+                    }
                     Symbol::NonTerminal(nt) => {
-                        non_terminals.insert(nt.clone());
+                        if !done_nt.contains(nt) {
+                            done_nt.insert(nt.clone());
+                            result.extend(recurse_first(nt, rules, done_nt));
+                        }
                         if !is_nullable(nt, rules) {
                             break;
                         }
                     }
-                    Symbol::Terminal(t) => {
-                        terminals.insert(t.clone());
-                        break;
-                    }
                 }
             }
         }
-    };
-    (terminals, non_terminals)
+    }
+    result
 }
 
 type ItemSets<T, NT> = HashSet<DotRule<T, NT>>;
@@ -402,10 +409,12 @@ fn sanity_check<T, NT: PartialEq + Eq + Hash>(rules: &Vec<Rule<T, NT>>) -> Optio
 mod tests {
     use crate::GrammarError;
     use crate::Symbol;
-    use crate::{closure, fold_rules, generate_sets, get_all_symbols, goto, sanity_check};
+    use crate::{
+        closure, first_set, fold_rules, generate_sets, get_all_symbols, goto, sanity_check,
+    };
     use crate::{DotRule, Rule};
     use lazy_static::lazy_static;
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
 
     fn add_dot_rule<T, NT>(rule: &mut DotRule<T, NT>, times: usize) {
         for _ in 0..times {
@@ -611,6 +620,60 @@ mod tests {
         result.insert(DotRule::new(test_grammar[4].clone()));
         result.insert(DotRule::new(test_grammar[5].clone()));
         assert_eq!(closure(set, &folded), result);
+    }
+
+    #[test]
+    fn compute_first() {
+        let mut correct = HashMap::new();
+        correct.insert(Symbol::Terminal(T::Id), {
+            let mut set = HashSet::new();
+            set.insert(T::Id);
+            set
+        });
+        correct.insert(Symbol::Terminal(T::LParen), {
+            let mut set = HashSet::new();
+            set.insert(T::LParen);
+            set
+        });
+        correct.insert(Symbol::Terminal(T::Plus), {
+            let mut set = HashSet::new();
+            set.insert(T::Plus);
+            set
+        });
+        correct.insert(Symbol::Terminal(T::RParen), {
+            let mut set = HashSet::new();
+            set.insert(T::RParen);
+            set
+        });
+        correct.insert(Symbol::Terminal(T::Times), {
+            let mut set = HashSet::new();
+            set.insert(T::Times);
+            set
+        });
+
+        correct.insert(Symbol::NonTerminal(NT::E), {
+            let mut set = HashSet::new();
+            set.insert(T::LParen);
+            set.insert(T::Id);
+            set
+        });
+        correct.insert(Symbol::NonTerminal(NT::F), {
+            let mut set = HashSet::new();
+            set.insert(T::LParen);
+            set.insert(T::Id);
+            set
+        });
+        correct.insert(Symbol::NonTerminal(NT::T), {
+            let mut set = HashSet::new();
+            set.insert(T::LParen);
+            set.insert(T::Id);
+            set
+        });
+
+        let folded = fold_rules(test_grammar.clone());
+        for sym in get_all_symbols(&test_grammar) {
+            assert_eq!(first_set(&sym, &folded), *correct.get(&sym).unwrap());
+        }
     }
 
     lazy_static! {
