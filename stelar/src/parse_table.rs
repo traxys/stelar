@@ -556,7 +556,7 @@ mod tests {
             lhs: NT::Ext,
             rhs: vec![Symbol::NonTerminal(NT::E)],
         }];
-        extended_grammar.append(&mut test_grammar.clone());
+        extended_grammar.append(&mut TEST_GRAMMAR.clone());
         let start_rule = extended_grammar[0].clone();
         let (terminals, non_terminals) = separate_symbols(&extended_grammar);
         let parse_table = ParseTable::new(extended_grammar, start_rule).unwrap();
@@ -622,17 +622,17 @@ mod tests {
 
     #[test]
     fn valid_grammar() {
-        assert_eq!(None, sanity_check(&test_grammar))
+        assert_eq!(None, sanity_check(&TEST_GRAMMAR))
     }
 
     #[test]
     fn goto_test() {
-        let folded = fold_rules(test_grammar.clone());
+        let folded = fold_rules(TEST_GRAMMAR.clone());
         let mut set = HashSet::new();
-        let mut b = DotRule::new(test_grammar[3].clone());
+        let mut b = DotRule::new(TEST_GRAMMAR[3].clone());
         set.insert(b.clone());
         b.increment();
-        let mut a = DotRule::new(test_grammar[2].clone());
+        let mut a = DotRule::new(TEST_GRAMMAR[2].clone());
         a.increment();
         a.increment();
         set.insert(a.clone());
@@ -646,7 +646,7 @@ mod tests {
 
     #[test]
     fn get_symbols() {
-        let syms = get_all_symbols(&test_grammar);
+        let syms = get_all_symbols(&TEST_GRAMMAR);
         let mut expected = HashSet::new();
         expected.insert(Symbol::NonTerminal(NT::E));
         expected.insert(Symbol::NonTerminal(NT::T));
@@ -661,7 +661,7 @@ mod tests {
 
     #[test]
     fn empty_closure() {
-        let folded = fold_rules(test_grammar.clone());
+        let folded = fold_rules(TEST_GRAMMAR.clone());
         assert_eq!(HashSet::new(), closure(HashSet::new(), &folded))
     }
 
@@ -672,7 +672,7 @@ mod tests {
             lhs: NT::Ext,
             rhs: vec![Symbol::NonTerminal(NT::E)],
         }];
-        extended_grammar.append(&mut test_grammar.clone());
+        extended_grammar.append(&mut TEST_GRAMMAR.clone());
         let folded = fold_rules(extended_grammar.clone());
         let symbols = get_all_symbols(&extended_grammar);
         let sets = generate_sets(extended_grammar[0].clone(), &folded, &symbols);
@@ -763,7 +763,7 @@ mod tests {
 
     #[test]
     fn simple_closure() {
-        let folded = fold_rules(test_grammar.clone());
+        let folded = fold_rules(TEST_GRAMMAR.clone());
         let mut set = HashSet::new();
         let mut item = DotRule::new(Rule {
             index: 5,
@@ -777,24 +777,24 @@ mod tests {
         item.increment();
         set.insert(item);
         let mut result = HashSet::new();
-        let mut a = DotRule::new(test_grammar[4].clone());
+        let mut a = DotRule::new(TEST_GRAMMAR[4].clone());
         a.increment();
         result.insert(a);
-        result.insert(DotRule::new(test_grammar[0].clone()));
-        result.insert(DotRule::new(test_grammar[1].clone()));
-        result.insert(DotRule::new(test_grammar[2].clone()));
-        result.insert(DotRule::new(test_grammar[3].clone()));
-        result.insert(DotRule::new(test_grammar[4].clone()));
-        result.insert(DotRule::new(test_grammar[5].clone()));
+        result.insert(DotRule::new(TEST_GRAMMAR[0].clone()));
+        result.insert(DotRule::new(TEST_GRAMMAR[1].clone()));
+        result.insert(DotRule::new(TEST_GRAMMAR[2].clone()));
+        result.insert(DotRule::new(TEST_GRAMMAR[3].clone()));
+        result.insert(DotRule::new(TEST_GRAMMAR[4].clone()));
+        result.insert(DotRule::new(TEST_GRAMMAR[5].clone()));
         assert_eq!(closure(set, &folded), result);
     }
 
     #[test]
     fn compute_follow() {
-        let (terminal, non_terminal) = separate_symbols(&test_grammar);
-        let folded = fold_rules(test_grammar.clone());
-        let first = first_sets(&terminal, &non_terminal, &test_grammar, &folded);
-        let follow = follow_sets(&first, &test_grammar, NT::E);
+        let (terminal, non_terminal) = separate_symbols(&TEST_GRAMMAR);
+        let folded = fold_rules(TEST_GRAMMAR.clone());
+        let first = first_sets(&terminal, &non_terminal, &TEST_GRAMMAR, &folded);
+        let follow = follow_sets(&first, &TEST_GRAMMAR, NT::E);
 
         let mut correct = HashMap::new();
         correct.insert(NT::E, set![None, Some(T::RParen), Some(T::Plus)]);
@@ -857,14 +857,14 @@ mod tests {
             set
         });
 
-        let folded = fold_rules(test_grammar.clone());
-        let (term, non_term) = separate_symbols(&test_grammar);
-        let first = first_sets(&term, &non_term, &test_grammar, &folded);
+        let folded = fold_rules(TEST_GRAMMAR.clone());
+        let (term, non_term) = separate_symbols(&TEST_GRAMMAR);
+        let first = first_sets(&term, &non_term, &TEST_GRAMMAR, &folded);
         assert_eq!(first, correct);
     }
 
     lazy_static! {
-        static ref test_grammar: Vec<Rule<T, NT>> = vec![
+        static ref TEST_GRAMMAR: Vec<Rule<T, NT>> = vec![
             Rule {
                 index: 1,
                 lhs: NT::E,
