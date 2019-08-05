@@ -252,7 +252,6 @@ where
     for rule in rules {
         for (index, symbol) in rule.rhs.iter().enumerate() {
             if index + 1 != rule.rhs.len() {
-                eprintln!("{}, {}", index, rule.rhs.len());
                 if let Symbol::NonTerminal(nt) = symbol {
                     // Add First(b) to Follow(B) for A -> aBb (b is a String)
                     let mut first_nt = first_of_list(&rule.rhs[index + 1..], first_sets);
@@ -267,30 +266,16 @@ where
     loop {
         let mut added_to_set = false;
         for rule in rules {
-            // Rule A -> aB (add Follow(A) to Follow(B))
-            if let Some(Symbol::NonTerminal(nt)) = rule.rhs.last() {
-                if let Some(follow_other) = sets.get(&rule.lhs).cloned() {
-                    let add_to_set = sets.entry(nt.clone()).or_insert_with(HashSet::new);
-                    let before_len = add_to_set.len();
-                    add_to_set.extend(follow_other);
-                    if before_len != add_to_set.len() {
-                        added_to_set = true;
-                    }
-                }
-            }
-            for (index, symbol) in rule.rhs.iter().enumerate().take(rule.rhs.len() - 1) {
+            for (index, symbol) in rule.rhs.iter().enumerate() {
                 if let Symbol::NonTerminal(nt) = symbol {
-                    let first_nt = first_of_list(&rule.rhs[index + 1..], first_sets);
-                    if first_nt.contains(&None) {
-                        // Rule A -> aBb if First(b) contain Epsilon
-                        // add Follow(A) to follow(B)
-                        if let Some(follow_other) = sets.get(&rule.lhs).cloned() {
-                            let add_to_set = sets.entry(nt.clone()).or_insert_with(HashSet::new);
-                            let before_len = add_to_set.len();
-                            add_to_set.extend(follow_other);
-                            if before_len != add_to_set.len() {
-                                added_to_set = true;
-                            }
+                    if index + 1 == rule.rhs.len()
+                        || first_of_list(&rule.rhs[index + 1..], first_sets).contains(&None)
+                    {
+                        let follow_other =
+                            sets.get(&rule.lhs).cloned().unwrap_or_else(HashSet::new);
+                        let set_to_add = sets.entry(nt.clone()).or_insert_with(HashSet::new);
+                        for item in follow_other.iter() {
+                            added_to_set = added_to_set || set_to_add.insert(item.clone());
                         }
                     }
                 }
@@ -441,11 +426,7 @@ where
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct ParseTable<T, NT>
-where
-    T: Clone + PartialEq + Eq + Hash,
-    NT: Clone + PartialEq + Eq + Hash,
-{
+pub struct ParseTable<T, NT> {
     goto_table: HashMap<(usize, NT), usize>,
     action_table: HashMap<(usize, Option<T>), Action>,
     pub rules: Vec<Rule<T, NT>>,
@@ -733,11 +714,11 @@ mod tests {
         correct.insert(NT::E, set![None, Some(T::RParen), Some(T::Plus)]);
         correct.insert(
             NT::T,
-            set![None, Some(T::Times), Some(T::RParen), Some(T::Times)],
+            set![None, Some(T::Times), Some(T::RParen), Some(T::Plus)],
         );
         correct.insert(
             NT::F,
-            set![None, Some(T::Times), Some(T::RParen), Some(T::Times)],
+            set![None, Some(T::Times), Some(T::RParen), Some(T::Plus)],
         );
         assert_eq!(follow, correct);
     }
