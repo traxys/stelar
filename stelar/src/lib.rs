@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub mod grammar;
 ///! Define a parse table for a parser
 pub mod parse_table;
+mod parser;
+pub use parser::Parser;
 
 ///! Trait to extract values out of a input storage
 pub trait Extract<I>: Sized {

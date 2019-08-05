@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
 ///! Action to be taken on the action table according to the lookahead and the state
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Action {
     ///! `Shift(i)` to state `i` by pushing the read symbol on the parse stack
@@ -17,11 +17,21 @@ pub enum Action {
 }
 
 ///! A Parse table being the goto table and the action table
+///! The parse table is expensive to create (i'd guess something like `n^2` in the number of
+///! symbols in all rules). you can save this table using serde for repeated uses.
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct ParseTable<T, NT> {
+pub struct ParseTable<T, NT>
+where
+    T: PartialEq + Eq + Hash,
+    NT: PartialEq + Eq + Hash,
+{
     pub goto_table: HashMap<(usize, NT), usize>,
     pub action_table: HashMap<(usize, Option<T>), Action>,
     pub rules: Vec<Rule<T, NT>>,
+    ///! Terminals possible in each state
+    pub expected_in_state: HashMap<usize, HashSet<T>>,
+    ///! Number of total states
+    pub state_count: usize,
 }
 
 #[derive(Debug)]
@@ -481,11 +491,24 @@ where
 
         let start_index = start_rule.index;
         let sets = generate_sets(start_rule, &folded, &symbols);
-        Ok(ParseTable {
+        let state_count = sets.len();
+        let mut parse_table = ParseTable {
+            expected_in_state: HashMap::new(),
+            state_count,
             rules,
             action_table: generate_action_table(&sets, &follow, &folded, &terminals, start_index)?,
             goto_table: generate_goto_table(&sets, &non_terminals, &folded),
-        })
+        };
+        for ((state_index, terminal), _) in &parse_table.action_table {
+            if let Some(terminal) = terminal {
+                parse_table
+                    .expected_in_state
+                    .entry(*state_index)
+                    .or_insert_with(HashSet::new)
+                    .insert(terminal.clone());
+            }
+        }
+        Ok(parse_table)
     }
 }
 

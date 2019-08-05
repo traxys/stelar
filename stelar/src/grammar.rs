@@ -17,3 +17,14 @@ pub struct Rule<T, NT> {
     pub lhs: NT,
     pub rhs: Vec<Symbol<T, NT>>,
 }
+
+#[derive(Hash, Clone, PartialEq, Eq, Debug)]
+pub struct Token<T> {
+    pub kind: T,
+    pub info: TokenInfo,
+}
+
+#[derive(Hash, Clone, PartialEq, Eq, Debug)]
+pub struct TokenInfo {
+    pub position: usize,
+}
