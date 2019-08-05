@@ -3,6 +3,19 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
+macro_rules! set {
+    ( $( $x:expr ),* ) => {  // Match zero or more comma delimited items
+        {
+            #[allow(unused_mut)]
+            let mut temp_set = HashSet::new();  // Create a mutable HashSet
+            $(
+                temp_set.insert($x); // Insert each item matched into the HashSet
+            )*
+            temp_set // Return the populated HashSet
+        }
+    };
+}
+
 ///! Trait to extract values out of a input storage
 pub trait Extract<I>: Sized {
     fn extract(input: &mut I) -> Option<Self>;
@@ -188,7 +201,7 @@ where
     }
     symbols
 }
-fn separate_symbols<T, NT>(rules: &Vec<Rule<T, NT>>) -> (HashSet<T>, HashSet<NT>)
+fn separate_symbols<T, NT>(rules: &[Rule<T, NT>]) -> (HashSet<T>, HashSet<NT>)
 where
     T: PartialEq + Eq + Clone + Hash,
     NT: PartialEq + Eq + Clone + Hash,
@@ -207,13 +220,6 @@ where
     (terminals, non_terminals)
 }
 
-fn follow_sets<T, NT>(rules: &RuleList<T, NT>) -> HashMap<NT, T>
-where
-    NT: PartialEq + Eq + Hash + Clone,
-    T: Clone,
-{
-    HashMap::new()
-}
 fn is_nullable<T, NT>(non_terminal: &NT, rules: &RuleList<T, NT>) -> bool
 where
     NT: PartialEq + Eq + Hash,
@@ -231,51 +237,140 @@ where
     }
 }
 
-fn first_set<T, NT>(symbol: &Symbol<T, NT>, rules: &RuleList<T, NT>) -> HashSet<T>
+type FollowSets<T, NT> = HashMap<NT, HashSet<Option<T>>>;
+fn follow_sets<T, NT>(
+    first_sets: &FirstSets<T, NT>,
+    rules: &[Rule<T, NT>],
+    start_symbol: NT,
+) -> FollowSets<T, NT>
 where
-    T: Hash + Clone + PartialEq + Eq,
-    NT: Hash + Clone + PartialEq + Eq,
+    T: PartialEq + Eq + Clone + Hash,
+    NT: PartialEq + Eq + Clone + Hash,
 {
-    let mut set = HashSet::new();
-    match symbol {
-        Symbol::Terminal(t) => {
-            set.insert(t.clone());
-        }
-        Symbol::NonTerminal(nt) => {
-            let mut done = HashSet::new();
-            set = recurse_first(nt, rules, &mut done);
+    let mut sets = HashMap::new();
+    sets.insert(start_symbol, set![None]);
+    for rule in rules {
+        for (index, symbol) in rule.rhs.iter().enumerate() {
+            if index + 1 != rule.rhs.len() {
+                eprintln!("{}, {}", index, rule.rhs.len());
+                if let Symbol::NonTerminal(nt) = symbol {
+                    // Add First(b) to Follow(B) for A -> aBb (b is a String)
+                    let mut first_nt = first_of_list(&rule.rhs[index + 1..], first_sets);
+                    first_nt.remove(&None);
+                    sets.entry(nt.clone())
+                        .or_insert_with(HashSet::new)
+                        .extend(first_nt)
+                }
+            }
         }
     }
-    set
-}
-
-fn recurse_first<T, NT>(nt: &NT, rules: &RuleList<T, NT>, done_nt: &mut HashSet<NT>) -> HashSet<T>
-where
-    T: Hash + Clone + PartialEq + Eq,
-    NT: Hash + Clone + PartialEq + Eq,
-{
-    let mut result = HashSet::new();
-    done_nt.insert(nt.clone());
-    if let Some(nt_rules) = rules.get(nt) {
-        for (_, rule) in nt_rules {
-            for sym in rule {
-                match sym {
-                    Symbol::Terminal(t) => {
-                        result.insert(t.clone());
-                        break;
+    loop {
+        let mut added_to_set = false;
+        for rule in rules {
+            // Rule A -> aB (add Follow(A) to Follow(B))
+            if let Some(Symbol::NonTerminal(nt)) = rule.rhs.last() {
+                if let Some(follow_other) = sets.get(&rule.lhs).cloned() {
+                    let add_to_set = sets.entry(nt.clone()).or_insert_with(HashSet::new);
+                    let before_len = add_to_set.len();
+                    add_to_set.extend(follow_other);
+                    if before_len != add_to_set.len() {
+                        added_to_set = true;
                     }
-                    Symbol::NonTerminal(nt) => {
-                        if !done_nt.contains(nt) {
-                            done_nt.insert(nt.clone());
-                            result.extend(recurse_first(nt, rules, done_nt));
-                        }
-                        if !is_nullable(nt, rules) {
-                            break;
+                }
+            }
+            for (index, symbol) in rule.rhs.iter().enumerate().take(rule.rhs.len() - 1) {
+                if let Symbol::NonTerminal(nt) = symbol {
+                    let first_nt = first_of_list(&rule.rhs[index + 1..], first_sets);
+                    if first_nt.contains(&None) {
+                        // Rule A -> aBb if First(b) contain Epsilon
+                        // add Follow(A) to follow(B)
+                        if let Some(follow_other) = sets.get(&rule.lhs).cloned() {
+                            let add_to_set = sets.entry(nt.clone()).or_insert_with(HashSet::new);
+                            let before_len = add_to_set.len();
+                            add_to_set.extend(follow_other);
+                            if before_len != add_to_set.len() {
+                                added_to_set = true;
+                            }
                         }
                     }
                 }
             }
         }
+        if !added_to_set {
+            break;
+        }
+    }
+    sets
+}
+
+type FirstSets<T, NT> = HashMap<Symbol<T, NT>, HashSet<Option<T>>>;
+
+fn first_sets<T, NT>(
+    terminals: &HashSet<T>,
+    non_terminals: &HashSet<NT>,
+    rules: &[Rule<T, NT>],
+    rule_list: &RuleList<T, NT>,
+) -> FirstSets<T, NT>
+where
+    T: Hash + Clone + PartialEq + Eq,
+    NT: Hash + Clone + PartialEq + Eq,
+{
+    let mut sets = HashMap::new();
+    for terminal in terminals {
+        sets.insert(
+            Symbol::Terminal(terminal.clone()),
+            set![Some(terminal.clone())],
+        );
+    }
+    for non_terminal in non_terminals {
+        sets.insert(
+            Symbol::NonTerminal(non_terminal.clone()),
+            if is_nullable(non_terminal, rule_list) {
+                set![None]
+            } else {
+                set![]
+            },
+        );
+    }
+    loop {
+        let mut added_to_set = false;
+        for rule in rules {
+            let first_of_many = first_of_list(&rule.rhs, &sets);
+            let set_to_add = sets
+                .get_mut(&Symbol::NonTerminal(rule.lhs.clone()))
+                .unwrap();
+            for item in first_of_many {
+                added_to_set = added_to_set || set_to_add.insert(item);
+            }
+        }
+        if !added_to_set {
+            break;
+        }
+    }
+    sets
+}
+
+// list must be non empty !
+fn first_of_list<T, NT>(
+    list: &[Symbol<T, NT>],
+    sets: &HashMap<Symbol<T, NT>, HashSet<Option<T>>>,
+) -> HashSet<Option<T>>
+where
+    T: Hash + Clone + PartialEq + Eq,
+    NT: Hash + Clone + PartialEq + Eq,
+{
+    let mut result = HashSet::new();
+    let mut add_eps = true;
+    for item in list {
+        add_eps = add_eps && sets.get(&item).unwrap().contains(&None);
+    }
+    result.extend(sets.get(&list[0]).unwrap().clone());
+    if sets.get(&list[0]).unwrap().contains(&None) && list.len() > 1 {
+        result.extend(first_of_list(&list[1..], sets));
+    }
+    result.remove(&None);
+    if add_eps {
+        result.insert(None);
     }
     result
 }
@@ -376,6 +471,10 @@ where
         let folded = fold_rules(rules.clone());
         let symbols = get_all_symbols(&rules);
         let (terminals, non_terminals) = separate_symbols(&rules);
+
+        let first = first_sets(&terminals, &non_terminals, &rules, &folded);
+        let _follow = follow_sets(&first, &rules, start_rule.lhs.clone());
+
         let _sets = generate_sets(start_rule, &folded, &symbols);
         Ok(ParseTable {
             rules,
@@ -410,7 +509,8 @@ mod tests {
     use crate::GrammarError;
     use crate::Symbol;
     use crate::{
-        closure, first_set, fold_rules, generate_sets, get_all_symbols, goto, sanity_check,
+        closure, first_sets, fold_rules, follow_sets, generate_sets, get_all_symbols, goto,
+        sanity_check, separate_symbols,
     };
     use crate::{DotRule, Rule};
     use lazy_static::lazy_static;
@@ -623,57 +723,77 @@ mod tests {
     }
 
     #[test]
+    fn compute_follow() {
+        let (terminal, non_terminal) = separate_symbols(&test_grammar);
+        let folded = fold_rules(test_grammar.clone());
+        let first = first_sets(&terminal, &non_terminal, &test_grammar, &folded);
+        let follow = follow_sets(&first, &test_grammar, NT::E);
+
+        let mut correct = HashMap::new();
+        correct.insert(NT::E, set![None, Some(T::RParen), Some(T::Plus)]);
+        correct.insert(
+            NT::T,
+            set![None, Some(T::Times), Some(T::RParen), Some(T::Times)],
+        );
+        correct.insert(
+            NT::F,
+            set![None, Some(T::Times), Some(T::RParen), Some(T::Times)],
+        );
+        assert_eq!(follow, correct);
+    }
+
+    #[test]
     fn compute_first() {
         let mut correct = HashMap::new();
         correct.insert(Symbol::Terminal(T::Id), {
             let mut set = HashSet::new();
-            set.insert(T::Id);
+            set.insert(Some(T::Id));
             set
         });
         correct.insert(Symbol::Terminal(T::LParen), {
             let mut set = HashSet::new();
-            set.insert(T::LParen);
+            set.insert(Some(T::LParen));
             set
         });
         correct.insert(Symbol::Terminal(T::Plus), {
             let mut set = HashSet::new();
-            set.insert(T::Plus);
+            set.insert(Some(T::Plus));
             set
         });
         correct.insert(Symbol::Terminal(T::RParen), {
             let mut set = HashSet::new();
-            set.insert(T::RParen);
+            set.insert(Some(T::RParen));
             set
         });
         correct.insert(Symbol::Terminal(T::Times), {
             let mut set = HashSet::new();
-            set.insert(T::Times);
+            set.insert(Some(T::Times));
             set
         });
 
         correct.insert(Symbol::NonTerminal(NT::E), {
             let mut set = HashSet::new();
-            set.insert(T::LParen);
-            set.insert(T::Id);
+            set.insert(Some(T::LParen));
+            set.insert(Some(T::Id));
             set
         });
         correct.insert(Symbol::NonTerminal(NT::F), {
             let mut set = HashSet::new();
-            set.insert(T::LParen);
-            set.insert(T::Id);
+            set.insert(Some(T::LParen));
+            set.insert(Some(T::Id));
             set
         });
         correct.insert(Symbol::NonTerminal(NT::T), {
             let mut set = HashSet::new();
-            set.insert(T::LParen);
-            set.insert(T::Id);
+            set.insert(Some(T::LParen));
+            set.insert(Some(T::Id));
             set
         });
 
         let folded = fold_rules(test_grammar.clone());
-        for sym in get_all_symbols(&test_grammar) {
-            assert_eq!(first_set(&sym, &folded), *correct.get(&sym).unwrap());
-        }
+        let (term, non_term) = separate_symbols(&test_grammar);
+        let first = first_sets(&term, &non_term, &test_grammar, &folded);
+        assert_eq!(first, correct);
     }
 
     lazy_static! {
