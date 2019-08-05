@@ -1,118 +1,127 @@
-use stelar::{Extract, TokenStream};
+use stelar::grammar::{Rule, Symbol};
+use stelar::{TokenStream, ValuedToken};
+mod token_extract;
 
-#[derive(Debug)]
-enum Operation {
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub enum AddOperation {
     Plus,
     Minus,
-    Times,
-    Div,
-    Modulo,
-    Power,
 }
 
-impl Operation {
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub enum MulOperation {
+    Times,
+    Div,
+}
+
+impl AddOperation {
     fn from_string(s: &str) -> Option<Self> {
         match s {
             "+" => Some(Self::Plus),
             "-" => Some(Self::Minus),
-            "*" => Some(Self::Times),
-            "/" => Some(Self::Div),
-            "%" => Some(Self::Modulo),
-            "^" => Some(Self::Power),
             _ => None,
         }
     }
 }
 
-#[derive(Debug)]
-enum Token {
+impl MulOperation {
+    fn from_string(s: &str) -> Option<Self> {
+        match s {
+            "*" => Some(Self::Times),
+            "/" => Some(Self::Div),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+enum NonTerminal {
+    Axiom,
+    E,
+    T,
+    F,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub enum Value {
     Integer(u64),
-    Float(f64),
-    Operation(Operation),
+    Plus(AddOperation),
+    Mul(MulOperation),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub enum TokenKind {
+    Int,
+    AddOp,
+    MulOp,
     Skip,
-}
-
-impl Token {
-    fn is_integer(s: &str) -> bool {
-        s.parse::<u64>().is_ok()
-    }
-    fn is_float(s: &str) -> bool {
-        s.parse::<f64>().is_ok()
-    }
-    fn is_op(s: &str) -> bool {
-        match s {
-            "+" | "-" | "*" | "/" | "%" | "^" => true,
-            _ => false,
-        }
-    }
-    fn is_skip(s: &str) -> bool {
-        match s {
-            " " => true,
-            _ => false,
-        }
-    }
-}
-
-impl Extract<String> for Token {
-    fn extract(input: &mut String) -> Option<Self> {
-        let mut possible = None;
-        let mut max_valid = 1;
-        if input.len() == 0 {
-            return None;
-        } else if input.len() == 1 {
-            if Token::is_skip(input) {
-                possible = Some(3);
-            }
-            if Token::is_op(input) {
-                possible = Some(2);
-            }
-        } else {
-            for i in 1..input.len() {
-                let mut has_valid = false;
-                let sub = &input[0..i];
-                max_valid = i;
-                if Token::is_float(sub) {
-                    has_valid = true;
-                    possible = Some(0);
-                }
-                if Token::is_integer(sub) {
-                    has_valid = true;
-                    possible = Some(1);
-                }
-                if Token::is_op(sub) {
-                    has_valid = true;
-                    possible = Some(2);
-                }
-                if Token::is_skip(sub) {
-                    has_valid = true;
-                    possible = Some(3);
-                }
-                if !has_valid {
-                    max_valid = i - 1;
-                    break;
-                }
-            }
-        }
-        let mut token = input.split_off(max_valid);
-        std::mem::swap(&mut token, input);
-
-        match possible {
-            Some(0) => Some(Token::Float(token.parse().unwrap())),
-            Some(1) => Some(Token::Integer(token.parse().unwrap())),
-            Some(2) => Some(Token::Operation(Operation::from_string(&token).unwrap())),
-            Some(3) => Some(Token::Skip),
-            None => None,
-            _ => unreachable!(),
-        }
-    }
+    LParen,
+    RParen,
 }
 
 fn main() {
-    let input = "9 +    -    12.46 *".to_string();
-    for token in
-        TokenStream::<_, Token>::new(input)
-            .filter(|t| if let Token::Skip = t { false } else { true })
-    {
+    let input = "( 9 + 12 * ( 42 + 3 ) - ( 5 * 6 + 3 ))".to_string();
+    for token in TokenStream::new(input).filter(|t| {
+        if let ValuedToken {
+            token: TokenKind::Skip,
+            value: _,
+        } = t
+        {
+            false
+        } else {
+            true
+        }
+    }) {
         println!("Token: {:?}", token);
     }
+
+    let grammar = vec![
+        Rule {
+            index: 0,
+            lhs: NonTerminal::Axiom,
+            rhs: vec![Symbol::NonTerminal(NonTerminal::E)],
+        },
+        Rule {
+            index: 1,
+            lhs: NonTerminal::E,
+            rhs: vec![
+                Symbol::NonTerminal(NonTerminal::E),
+                Symbol::Terminal(TokenKind::AddOp),
+                Symbol::NonTerminal(NonTerminal::T),
+            ],
+        },
+        Rule {
+            index: 2,
+            lhs: NonTerminal::E,
+            rhs: vec![Symbol::NonTerminal(NonTerminal::T)],
+        },
+        Rule {
+            index: 3,
+            lhs: NonTerminal::T,
+            rhs: vec![
+                Symbol::NonTerminal(NonTerminal::T),
+                Symbol::Terminal(TokenKind::MulOp),
+                Symbol::NonTerminal(NonTerminal::F),
+            ],
+        },
+        Rule {
+            index: 4,
+            lhs: NonTerminal::T,
+            rhs: vec![Symbol::NonTerminal(NonTerminal::F)],
+        },
+        Rule {
+            index: 5,
+            lhs: NonTerminal::F,
+            rhs: vec![
+                Symbol::Terminal(TokenKind::LParen),
+                Symbol::NonTerminal(NonTerminal::E),
+                Symbol::Terminal(TokenKind::RParen),
+            ],
+        },
+        Rule {
+            index: 6,
+            lhs: NonTerminal::F,
+            rhs: vec![Symbol::Terminal(TokenKind::Int)],
+        },
+    ];
 }
