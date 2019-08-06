@@ -7,6 +7,7 @@ pub mod grammar;
 pub mod parse_table;
 mod parser;
 pub use parser::Parser;
+pub use parser::SyntaxTree;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct ValuedToken<T, V> {

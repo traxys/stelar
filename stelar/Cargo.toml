@@ -6,8 +6,13 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+
 [dependencies]
 serde = { version = "1.0.97", features = ["derive"], optional = true }
+prettytable-rs = { version = "0.8", optional = true }
+
+[features]
+print_table = ["prettytable-rs"]
 
 [dev-dependencies]
 prettytable-rs = "0.8.0"

@@ -1,5 +1,6 @@
 use stelar::grammar::{Rule, Symbol};
-use stelar::{TokenStream, ValuedToken};
+use stelar::parse_table::ParseTable;
+use stelar::{Parser, SyntaxTree, TokenStream, ValuedToken};
 mod token_extract;
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
@@ -59,9 +60,66 @@ pub enum TokenKind {
     RParen,
 }
 
+fn interpret_tree(mut tree: SyntaxTree<TokenKind, NonTerminal, Value>) -> Result<u64, ()> {
+    match tree.rule_applied {
+        Some(i) => {
+            if i == 1 {
+                let rhs = interpret_tree(tree.children.pop().unwrap())?;
+                let operation = tree.children.pop().unwrap().symbol;
+                let lhs = interpret_tree(tree.children.pop().unwrap())?;
+                match operation {
+                    Symbol::Terminal(ValuedToken {
+                        token: _,
+                        value: Some(Value::Plus(add_op)),
+                    }) => match add_op {
+                        AddOperation::Plus => Ok(lhs + rhs),
+                        AddOperation::Minus => Ok(lhs - rhs),
+                    },
+                    _ => Err(()),
+                }
+            } else if i == 2 {
+                interpret_tree(tree.children.pop().unwrap())
+            } else if i == 3 {
+                let rhs = interpret_tree(tree.children.pop().unwrap())?;
+                let operation = tree.children.pop().unwrap().symbol;
+                let lhs = interpret_tree(tree.children.pop().unwrap())?;
+                match operation {
+                    Symbol::Terminal(ValuedToken {
+                        token: _,
+                        value: Some(Value::Mul(mul_op)),
+                    }) => match mul_op {
+                        MulOperation::Times => Ok(lhs * rhs),
+                        MulOperation::Div => Ok(lhs / rhs),
+                    },
+                    _ => Err(()),
+                }
+            } else if i == 4 {
+                interpret_tree(tree.children.pop().unwrap())
+            } else if i == 5 {
+                tree.children.pop();
+                interpret_tree(tree.children.pop().unwrap())
+            } else if i == 6 {
+                interpret_tree(tree.children.pop().unwrap())
+            } else {
+                Err(())
+            }
+        }
+        None => match tree.symbol {
+            Symbol::Terminal(t) => match t.token {
+                TokenKind::Int => match t.value {
+                    Some(Value::Integer(n)) => Ok(n),
+                    _ => Err(()),
+                },
+                _ => Err(()),
+            },
+            _ => Err(()),
+        },
+    }
+}
+
 fn main() {
-    let input = "( 9 + 12 * ( 42 + 3 ) - ( 5 * 6 + 3 ))".to_string();
-    for token in TokenStream::new(input).filter(|t| {
+    let input_litteral = "(           -9 + 12 * ( 42 + 3 ) - ( 5 * 6 + 3 ))";
+    let input = TokenStream::new(input_litteral.to_string()).filter(|t| {
         if let ValuedToken {
             token: TokenKind::Skip,
             value: _,
@@ -71,10 +129,7 @@ fn main() {
         } else {
             true
         }
-    }) {
-        println!("Token: {:?}", token);
-    }
-
+    });
     let grammar = vec![
         Rule {
             index: 0,
@@ -124,4 +179,14 @@ fn main() {
             rhs: vec![Symbol::Terminal(TokenKind::Int)],
         },
     ];
+
+    let start_rule = grammar[0].clone();
+    let parse_table = ParseTable::new(grammar, start_rule).unwrap();
+    parse_table.print_tables();
+    let mut parser = Parser::new(parse_table);
+    let tree = match parser.parse(input) {
+        Err(_) => return,
+        Ok(t) => t,
+    };
+    println!("{} = {:?}", input_litteral, interpret_tree(tree));
 }

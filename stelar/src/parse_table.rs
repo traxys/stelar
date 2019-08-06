@@ -512,6 +512,72 @@ where
     }
 }
 
+#[cfg(feature = "print_table")]
+impl<T, NT> ParseTable<T, NT>
+where
+    T: Hash + std::fmt::Debug + PartialEq + Eq + Clone,
+    NT: Hash + std::fmt::Debug + PartialEq + Eq + Clone,
+{
+    pub fn print_tables(&self) {
+        use prettytable::{Attr, Cell, Row, Table};
+
+        let mut terminals = set![None];
+        for ((_, term), _) in &self.action_table {
+            terminals.insert(term.clone());
+        }
+        let mut non_terminals = HashSet::new();
+        for ((_, nt), _) in &self.goto_table {
+            non_terminals.insert(nt.clone());
+        }
+        let mut action_table = Table::new();
+        let mut goto_table = Table::new();
+        let (mut terminals, non_terminals): (Vec<_>, Vec<_>) = (
+            terminals.into_iter().collect(),
+            non_terminals.into_iter().collect(),
+        );
+        let mut action_header = vec![Cell::new("Action")
+            .with_style(Attr::Bold)
+            .with_style(Attr::Italic(true))];
+        action_header.extend(terminals.iter().map(|t| match t {
+            Some(t) => Cell::new(&format!("{:?}", t)).with_style(Attr::Bold),
+            None => Cell::new("<EOF>").with_style(Attr::Bold),
+        }));
+        action_table.add_row(Row::new(action_header));
+        let mut goto_header = vec![Cell::new("Goto")
+            .with_style(Attr::Bold)
+            .with_style(Attr::Italic(true))];
+        goto_header.extend(
+            non_terminals
+                .iter()
+                .map(|t| Cell::new(&format!("{:?}", t)).with_style(Attr::Bold)),
+        );
+        goto_table.add_row(Row::new(goto_header));
+
+        for set in 0..self.state_count {
+            let mut action_row = vec![Cell::new(&format!("{}", set))];
+            for terminal in &terminals {
+                action_row.push(match self.action_table.get(&(set, terminal.clone())) {
+                    None => Cell::new(""),
+                    Some(Action::Done) => Cell::new("accept"),
+                    Some(Action::Shift(i)) => Cell::new(&format!("s{}", i)),
+                    Some(Action::Reduce(i)) => Cell::new(&format!("r{}", i)),
+                })
+            }
+            action_table.add_row(Row::new(action_row));
+            let mut goto_row = vec![Cell::new(&format!("{}", set))];
+            for non_terminal in &non_terminals {
+                goto_row.push(match self.goto_table.get(&(set, non_terminal.clone())) {
+                    Some(i) => Cell::new(&format!("{}", i)),
+                    None => Cell::new(""),
+                })
+            }
+            goto_table.add_row(Row::new(goto_row));
+        }
+        action_table.printstd();
+        goto_table.printstd();
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum GrammarError {
     NoDeriveRule,
