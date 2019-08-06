@@ -2,7 +2,6 @@ use crate::grammar::Symbol;
 use crate::parse_table::{Action, ParseTable};
 use crate::ValuedToken;
 use std::collections::HashSet;
-use std::fmt::Debug;
 use std::hash::Hash;
 
 ///! A parser wrapping a ParseTable with the parsing logic
@@ -34,11 +33,26 @@ where
     },
 }
 
+impl<T> std::fmt::Display for ParseError<T>
+where
+    T: std::fmt::Debug + Hash + PartialEq + Eq,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParseError::Unexpected {
+                expected: e,
+                got: t,
+            } => write!(f, "Unexpected token, got: {:?}, expected: {:?}", t, e),
+        }
+    }
+}
+
+impl<T> std::error::Error for ParseError<T> where T: std::fmt::Debug + Hash + PartialEq + Eq {}
+
 impl<T, V, NT> Parser<T, V, NT>
 where
-    V: Debug,
-    NT: Clone + PartialEq + Eq + Hash + Debug,
-    T: PartialEq + Eq + Hash + Clone + Debug,
+    NT: Clone + PartialEq + Eq + Hash,
+    T: PartialEq + Eq + Hash + Clone,
 {
     pub fn new(parse_table: ParseTable<T, NT>) -> Parser<T, V, NT> {
         Parser {

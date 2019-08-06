@@ -40,6 +40,17 @@ pub enum ParseTableError {
     ActionConflict(ActionTableError),
 }
 
+impl std::fmt::Display for ParseTableError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParseTableError::ActionConflict(e) => write!(f, "Conflict in actions: {}", e),
+            ParseTableError::InvalidGrammar(e) => write!(f, "Invalid grammar: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for ParseTableError {}
+
 macro_rules! set {
     ( $( $x:expr ),* ) => {  // Match zero or more comma delimited items
         {
@@ -351,6 +362,17 @@ pub enum ActionTableError {
     ReduceReduceConflict,
 }
 
+impl std::fmt::Display for ActionTableError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ActionTableError::ShiftReduceConflict => write!(f, "shift / reduce conflict"),
+            ActionTableError::ReduceReduceConflict => write!(f, "reduce / reduce conflict"),
+        }
+    }
+}
+
+impl std::error::Error for ActionTableError {}
+
 fn generate_goto_table<T, NT>(
     goto_sets: &Vec<ItemSets<T, NT>>,
     non_terminals: &HashSet<NT>,
@@ -582,6 +604,14 @@ where
 pub enum GrammarError {
     NoDeriveRule,
 }
+
+impl std::fmt::Display for GrammarError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "No derive rule for non_terminal")
+    }
+}
+
+impl std::error::Error for GrammarError {}
 
 fn sanity_check<T, NT: PartialEq + Eq + Hash>(rules: &Vec<Rule<T, NT>>) -> Option<GrammarError> {
     let mut non_terminals = HashSet::new();
