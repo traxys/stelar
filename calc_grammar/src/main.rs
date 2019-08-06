@@ -118,18 +118,6 @@ fn interpret_tree(mut tree: SyntaxTree<TokenKind, NonTerminal, Value>) -> Result
 }
 
 fn main() {
-    let input_litteral = "(           -9 + 12 * ( 42 + 3 ) - ( 5 * 6 + 3 ))";
-    let input = TokenStream::new(input_litteral.to_string()).filter(|t| {
-        if let ValuedToken {
-            token: TokenKind::Skip,
-            value: _,
-        } = t
-        {
-            false
-        } else {
-            true
-        }
-    });
     let grammar = vec![
         Rule {
             index: 0,
@@ -180,13 +168,23 @@ fn main() {
         },
     ];
 
+    let input_litteral = "(9 * 4 + 12 * ( 42 + 3 ) * 42 - ( (5 - 2) * 6 + 3 ))";
+    let input = TokenStream::new(input_litteral.to_string()).filter(|t| {
+        if let ValuedToken {
+            token: TokenKind::Skip,
+            value: _,
+        } = t
+        {
+            false
+        } else {
+            true
+        }
+    });
+
     let start_rule = grammar[0].clone();
     let parse_table = ParseTable::new(grammar, start_rule).unwrap();
     parse_table.print_tables();
     let mut parser = Parser::new(parse_table);
-    let tree = match parser.parse(input) {
-        Err(_) => return,
-        Ok(t) => t,
-    };
+    let tree = parser.parse(input).unwrap();
     println!("{} = {:?}", input_litteral, interpret_tree(tree));
 }
