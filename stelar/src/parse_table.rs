@@ -553,7 +553,7 @@ where
         }
         let mut action_table = Table::new();
         let mut goto_table = Table::new();
-        let (mut terminals, non_terminals): (Vec<_>, Vec<_>) = (
+        let (terminals, non_terminals): (Vec<_>, Vec<_>) = (
             terminals.into_iter().collect(),
             non_terminals.into_iter().collect(),
         );
