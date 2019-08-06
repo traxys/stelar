@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["Quentin Boyer <qbsecond@gmail.com>"]
 edition = "2018"
 
+license = "GPL-3.0-or-later"
+description = "A SLR table generator, and LR parser"
+repository = "https://github.com/traxys/stelar"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 
