@@ -28,3 +28,20 @@ pub struct Token<T> {
 pub struct TokenInfo {
     pub position: usize,
 }
+
+#[macro_export]
+macro_rules! rule_rhs {
+    (@impl ($($stack:expr,)*), ($e:expr), $($rest:tt)*) => (rule_rhs!(@impl ($($stack,)* Symbol::NonTerminal($e),), $($rest)*));
+    (@impl ($($stack:expr,)*), $e:expr, $($rest:tt)*) => (rule_rhs!(@impl ($($stack,)* Symbol::Terminal($e),), $($rest)*));
+    (@impl ($($stack:expr,)*), $(,)?) => (vec![$($stack),*]);
+    (@impl ($($stack:expr,)*), $($rest:tt)*) => (compile_error!("invalid input"));
+    ($($rest:tt)*) => (rule_rhs!(@impl (), $($rest)*,)); // initialization
+}
+
+pub fn create_rules<T, NT>(rules: Vec<(NT, Vec<Symbol<T, NT>>)>) -> Vec<Rule<T, NT>> {
+    rules
+        .into_iter()
+        .enumerate()
+        .map(|(index, (lhs, rhs))| Rule { index, lhs, rhs })
+        .collect()
+}
