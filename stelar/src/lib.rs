@@ -50,6 +50,7 @@ where
     }
 }
 
+// Thanks to Adam on the Rust Community Discord for this macro !
 #[macro_export]
 macro_rules! rule_rhs {
     (@impl ($($stack:expr,)*), ($e:expr), $($rest:tt)*) => (rule_rhs!(@impl ($($stack,)* Symbol::NonTerminal($e),), $($rest)*));

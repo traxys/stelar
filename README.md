@@ -14,15 +14,10 @@ Morever if you want more meaningfull errors you should have `Debug`.
 `T` is the token, or terminal type, representing the input values.
 `NT` are the grammar construct.
 
-You then have to define rules of the form 
+You then have to define rules of the form `(NT, Vec<Symbol<T, NT>>)` and call `create_rules`.
 
-```rust
-Rule {
-	index: usize,
-	lhs: NT,
-	rhs: Vec<T and NT>,
-}
-```
+To make the rule definition easier there is a macro `rule_rhs![]`, it works by creating a `Vec` of symbols such that `[..., Foo, ...]` is mapped to `Symbol::Terminal(Foo)` and `[...., (Bar), ....]` is mapped to `Symbol::NonTerminal(Bar)`.
+
 And a grammar `g` is a `Vec` of such rules, such that `g[i].index == i`.
 
 With this grammar you can generate a `ParseTable<T, NT>`.
