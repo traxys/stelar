@@ -49,3 +49,12 @@ where
         T::extract(&mut self.input)
     }
 }
+
+#[macro_export]
+macro_rules! rule_rhs {
+    (@impl ($($stack:expr,)*), ($e:expr), $($rest:tt)*) => (rule_rhs!(@impl ($($stack,)* Symbol::NonTerminal($e),), $($rest)*));
+    (@impl ($($stack:expr,)*), $e:expr, $($rest:tt)*) => (rule_rhs!(@impl ($($stack,)* Symbol::Terminal($e),), $($rest)*));
+    (@impl ($($stack:expr,)*), $(,)?) => (vec![$($stack),*]);
+    (@impl ($($stack:expr,)*), $($rest:tt)*) => (compile_error!("invalid input"));
+    ($($rest:tt)*) => (rule_rhs!(@impl (), $($rest)*,)); // initialization
+}

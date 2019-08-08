@@ -1,5 +1,6 @@
-use stelar::grammar::{Rule, Symbol};
+use stelar::grammar::Symbol;
 use stelar::parse_table::ParseTable;
+use stelar::rule_rhs;
 use stelar::{Parser, SyntaxTree, TokenStream, ValuedToken};
 mod token_extract;
 
@@ -118,55 +119,24 @@ fn interpret_tree(mut tree: SyntaxTree<TokenKind, NonTerminal, Value>) -> Result
 }
 
 fn main() {
-    let grammar = vec![
-        Rule {
-            index: 0,
-            lhs: NonTerminal::Axiom,
-            rhs: vec![Symbol::NonTerminal(NonTerminal::E)],
-        },
-        Rule {
-            index: 1,
-            lhs: NonTerminal::E,
-            rhs: vec![
-                Symbol::NonTerminal(NonTerminal::E),
-                Symbol::Terminal(TokenKind::AddOp),
-                Symbol::NonTerminal(NonTerminal::T),
-            ],
-        },
-        Rule {
-            index: 2,
-            lhs: NonTerminal::E,
-            rhs: vec![Symbol::NonTerminal(NonTerminal::T)],
-        },
-        Rule {
-            index: 3,
-            lhs: NonTerminal::T,
-            rhs: vec![
-                Symbol::NonTerminal(NonTerminal::T),
-                Symbol::Terminal(TokenKind::MulOp),
-                Symbol::NonTerminal(NonTerminal::F),
-            ],
-        },
-        Rule {
-            index: 4,
-            lhs: NonTerminal::T,
-            rhs: vec![Symbol::NonTerminal(NonTerminal::F)],
-        },
-        Rule {
-            index: 5,
-            lhs: NonTerminal::F,
-            rhs: vec![
-                Symbol::Terminal(TokenKind::LParen),
-                Symbol::NonTerminal(NonTerminal::E),
-                Symbol::Terminal(TokenKind::RParen),
-            ],
-        },
-        Rule {
-            index: 6,
-            lhs: NonTerminal::F,
-            rhs: vec![Symbol::Terminal(TokenKind::Int)],
-        },
-    ];
+    let grammar = stelar::grammar::create_rules(vec![
+        (NonTerminal::Axiom, rule_rhs![(NonTerminal::E)]),
+        (
+            NonTerminal::E,
+            rule_rhs![(NonTerminal::E), TokenKind::AddOp, (NonTerminal::T)],
+        ),
+        (NonTerminal::E, rule_rhs![(NonTerminal::T)]),
+        (
+            NonTerminal::T,
+            rule_rhs![(NonTerminal::T), TokenKind::MulOp, (NonTerminal::F)],
+        ),
+        (NonTerminal::T, rule_rhs![(NonTerminal::F)]),
+        (
+            NonTerminal::F,
+            rule_rhs![TokenKind::LParen, (NonTerminal::E), TokenKind::RParen],
+        ),
+        (NonTerminal::F, rule_rhs![TokenKind::Int]),
+    ]);
 
     let input_litteral = "(9 * 4 + 12 * ( 42 + 3 ) * 42 - ( (5 - 2) * 6 + 3 ))";
     let input = TokenStream::new(input_litteral.to_string()).filter(|t| {
@@ -183,7 +153,7 @@ fn main() {
 
     let start_rule = grammar[0].clone();
     let parse_table = ParseTable::new(grammar, start_rule).unwrap();
-    parse_table.print_tables();
+    //parse_table.print_tables();
     let mut parser = Parser::new(parse_table);
     let tree = parser.parse(input).unwrap();
     println!("{} = {:?}", input_litteral, interpret_tree(tree));
