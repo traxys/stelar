@@ -67,14 +67,22 @@ where
         I: Iterator<Item = ValuedToken<T, V>>,
     {
         for token in input {
-            self.handle_token(Some(token))?
+            if let Err(e) = self.handle_token(Some(token)) {
+                self.state_stack = vec![0];
+                self.tree_stack.clear();
+                return Err(e);
+            }
         }
-        self.handle_token(None)?;
+        if let Err(e) = self.handle_token(None) {
+            self.state_stack = vec![0];
+            self.tree_stack.clear();
+            return Err(e);
+        }
         let res = self.tree_stack.pop().unwrap();
 
-        // Cleanup for parser to be used again
         self.state_stack = vec![0];
         self.tree_stack.clear();
+
         Ok(res)
     }
 

@@ -544,11 +544,11 @@ where
         use prettytable::{Attr, Cell, Row, Table};
 
         let mut terminals = set![None];
-        for ((_, term), _) in &self.action_table {
+        for (_, term) in self.action_table.keys() {
             terminals.insert(term.clone());
         }
         let mut non_terminals = HashSet::new();
-        for ((_, nt), _) in &self.goto_table {
+        for (_, nt) in self.goto_table.keys() {
             non_terminals.insert(nt.clone());
         }
         let mut action_table = Table::new();
