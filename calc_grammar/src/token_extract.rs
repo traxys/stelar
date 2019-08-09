@@ -51,6 +51,7 @@ impl Extract<String> for TokenKind {
     fn extract(input: &mut String) -> Option<ValuedToken<Self, TokenValue>> {
         let mut possible = None;
         let mut max_valid = 1;
+
         if input.is_empty() {
             return None;
         } else if input.len() == 1 {
@@ -77,6 +78,9 @@ impl Extract<String> for TokenKind {
             }
             if is_separator(input) {
                 possible = Some(TokenKind::Separator);
+            }
+            if is_integer(input) {
+                possible = Some(TokenKind::Int);
             }
         } else {
             for i in 1..=input.len() {

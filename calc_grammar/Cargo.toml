@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 stelar = { path = "../stelar" , features = ["print_table"]}
 rustyline = "5.0.1"
+lazy_static = "1.3.0"

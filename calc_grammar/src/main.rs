@@ -43,10 +43,11 @@ impl MulOperation {
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum NonTerminal {
     Axiom,
-    E,
-    T,
-    F,
-    L,
+    Statement,
+    Expr,
+    Term,
+    Factor,
+    List,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
@@ -79,36 +80,46 @@ fn print_grammar(grammar: &[Rule<TokenKind, NonTerminal>]) {
 
 fn main() {
     let grammar = stelar::grammar::create_rules(vec![
-        (NonTerminal::Axiom, rule_rhs![(NonTerminal::E)]),
+        (NonTerminal::Axiom, rule_rhs![(NonTerminal::Statement)]),
         (
-            NonTerminal::E,
-            rule_rhs![(NonTerminal::E), TokenKind::AddOp, (NonTerminal::T)],
+            NonTerminal::Expr,
+            rule_rhs![(NonTerminal::Expr), TokenKind::AddOp, (NonTerminal::Term)],
         ),
-        (NonTerminal::E, rule_rhs![(NonTerminal::T)]),
+        (NonTerminal::Expr, rule_rhs![(NonTerminal::Term)]),
         (
-            NonTerminal::T,
-            rule_rhs![(NonTerminal::T), TokenKind::MulOp, (NonTerminal::F)],
+            NonTerminal::Term,
+            rule_rhs![(NonTerminal::Term), TokenKind::MulOp, (NonTerminal::Factor)],
         ),
-        (NonTerminal::T, rule_rhs![(NonTerminal::F)]),
+        (NonTerminal::Term, rule_rhs![(NonTerminal::Factor)]),
         (
-            NonTerminal::F,
-            rule_rhs![TokenKind::LParen, (NonTerminal::E), TokenKind::RParen],
+            NonTerminal::Factor,
+            rule_rhs![TokenKind::LParen, (NonTerminal::Expr), TokenKind::RParen],
         ),
-        (NonTerminal::F, rule_rhs![TokenKind::Int]),
+        (NonTerminal::Factor, rule_rhs![TokenKind::Int]),
         (
-            NonTerminal::L,
-            rule_rhs![(NonTerminal::E), TokenKind::Separator, (NonTerminal::L)],
+            NonTerminal::List,
+            rule_rhs![
+                (NonTerminal::Expr),
+                TokenKind::Separator,
+                (NonTerminal::List)
+            ],
         ),
-        (NonTerminal::L, rule_rhs![(NonTerminal::E)]),
+        (NonTerminal::List, rule_rhs![(NonTerminal::Expr)]),
         (
-            NonTerminal::F,
+            NonTerminal::Factor,
             rule_rhs![
                 TokenKind::Name,
                 TokenKind::LParen,
-                (NonTerminal::L),
+                (NonTerminal::List),
                 TokenKind::RParen
             ],
         ),
+        (NonTerminal::Statement, rule_rhs![(NonTerminal::Expr)]),
+        (
+            NonTerminal::Statement,
+            rule_rhs![TokenKind::Name, TokenKind::Assign, (NonTerminal::Expr)],
+        ),
+        (NonTerminal::Term, rule_rhs![TokenKind::Name]),
     ]);
 
     let start_rule = grammar[0].clone();
@@ -116,8 +127,10 @@ fn main() {
     let parse_table = ParseTable::new(grammar.clone(), start_rule).unwrap();
     //parse_table.print_tables();
     let mut parser = Parser::new(parse_table);
+    let mut print_stream = false;
 
     let mut rl = completer::get_editor();
+    let mut scope = std::collections::HashMap::new();
     loop {
         let readline = rl.readline(">> ");
         match readline {
@@ -130,18 +143,28 @@ fn main() {
                     print_grammar(&grammar);
                     continue;
                 }
+                if line == "tokens" {
+                    print_stream = !print_stream;
+                    continue;
+                }
                 rl.add_history_entry(line.as_str());
-                let input = TokenStream::new(line).filter(|t| {
-                    if let ValuedToken {
-                        token: TokenKind::Skip,
-                        ..
-                    } = t
-                    {
-                        false
-                    } else {
-                        true
-                    }
-                });
+                let input = TokenStream::new(line)
+                    .inspect(|t| {
+                        if print_stream {
+                            println!("{:?}", t)
+                        }
+                    })
+                    .filter(|t| {
+                        if let ValuedToken {
+                            token: TokenKind::Skip,
+                            ..
+                        } = t
+                        {
+                            false
+                        } else {
+                            true
+                        }
+                    });
                 let tree = match parser.parse(input) {
                     Ok(t) => t,
                     Err(e) => {
@@ -149,8 +172,10 @@ fn main() {
                         continue;
                     }
                 };
-                match interpret::interpret_tree(tree) {
-                    Ok(n) => println!("-> {}", n),
+                let (res, new_scope) = interpret::interpret_tree(tree, scope);
+                scope = new_scope;
+                match res {
+                    Ok(Some(v)) => println!("-> {}", v),
                     Err(interpret::EvalError::InvalidArguments {
                         function: f,
                         got: n,
@@ -163,6 +188,7 @@ fn main() {
                         eprintln!("Unknown symbol: {}", s)
                     }
                     Err(e) => eprintln!("Internal Error: {:?}", e),
+                    _ => (),
                 }
             }
             Err(ReadlineError::Interrupted) => (),
