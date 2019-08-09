@@ -75,7 +75,7 @@ struct DotRule<T, NT> {
 
 impl<T, NT> DotRule<T, NT> {
     fn increment(&mut self) -> bool {
-        if self.after.len() != 0 {
+        if !self.after.is_empty() {
             let temp = self.after.split_off(1);
             self.before.push(self.after.pop().unwrap());
             self.after = temp;
@@ -181,7 +181,7 @@ where
     closure(to_close, rules)
 }
 
-fn get_all_symbols<T, NT>(rules: &Vec<Rule<T, NT>>) -> HashSet<Symbol<T, NT>>
+fn get_all_symbols<T, NT>(rules: &[Rule<T, NT>]) -> HashSet<Symbol<T, NT>>
 where
     T: PartialEq + Eq + Clone + Hash,
     NT: PartialEq + Eq + Clone + Hash,
@@ -374,7 +374,7 @@ impl std::fmt::Display for ActionTableError {
 impl std::error::Error for ActionTableError {}
 
 fn generate_goto_table<T, NT>(
-    goto_sets: &Vec<ItemSets<T, NT>>,
+    goto_sets: &[ItemSets<T, NT>],
     non_terminals: &HashSet<NT>,
     rules: &RuleList<T, NT>,
 ) -> HashMap<(usize, NT), usize>
@@ -398,7 +398,7 @@ where
 }
 
 fn generate_action_table<T, NT>(
-    goto_sets: &Vec<ItemSets<T, NT>>,
+    goto_sets: &[ItemSets<T, NT>],
     follow_sets: &FollowSets<T, NT>,
     rules: &RuleList<T, NT>,
     terminals: &HashSet<T>,
@@ -521,7 +521,7 @@ where
             action_table: generate_action_table(&sets, &follow, &folded, &terminals, start_index)?,
             goto_table: generate_goto_table(&sets, &non_terminals, &folded),
         };
-        for ((state_index, terminal), _) in &parse_table.action_table {
+        for (state_index, terminal) in parse_table.action_table.keys() {
             if let Some(terminal) = terminal {
                 parse_table
                     .expected_in_state
@@ -613,15 +613,16 @@ impl std::fmt::Display for GrammarError {
 
 impl std::error::Error for GrammarError {}
 
-fn sanity_check<T, NT: PartialEq + Eq + Hash>(rules: &Vec<Rule<T, NT>>) -> Option<GrammarError> {
+fn sanity_check<T, NT: PartialEq + Eq + Hash>(rules: &[Rule<T, NT>]) -> Option<GrammarError> {
     let mut non_terminals = HashSet::new();
     non_terminals.extend(rules.iter().map(|r| &r.lhs));
-    if rules.iter().any(|v| {
-        v.rhs.iter().any(|s| match s {
+    let rule_known = |r: &Rule<T, NT>| {
+        r.rhs.iter().any(|s| match s {
             Symbol::NonTerminal(nt) => !non_terminals.contains(nt),
             _ => false,
         })
-    }) {
+    };
+    if rules.iter().any(rule_known) {
         Some(GrammarError::NoDeriveRule)
     } else {
         None

@@ -93,7 +93,7 @@ where
         let trans = (
             *self.state_stack.last().unwrap(),
             match &token {
-                Some(ValuedToken { token: t, value: _ }) => Some(t.clone()),
+                Some(ValuedToken { token: t, .. }) => Some(t.clone()),
                 None => None,
             },
         );
@@ -137,7 +137,7 @@ where
             .unwrap();
         self.state_stack.push(*new_state);
         self.tree_stack.push(SyntaxTree {
-            children: children,
+            children,
             rule_applied: Some(i),
             symbol: Symbol::NonTerminal(rule.lhs.clone()),
         });
