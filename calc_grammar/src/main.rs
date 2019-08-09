@@ -1,7 +1,11 @@
-use stelar::grammar::Symbol;
+use rustyline::error::ReadlineError;
+use stelar::grammar::{Rule, Symbol};
 use stelar::parse_table::ParseTable;
 use stelar::rule_rhs;
-use stelar::{Parser, SyntaxTree, TokenStream, ValuedToken};
+use stelar::{Parser, TokenStream, ValuedToken};
+
+mod completer;
+mod interpret;
 mod token_extract;
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
@@ -37,15 +41,17 @@ impl MulOperation {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
-enum NonTerminal {
+pub enum NonTerminal {
     Axiom,
     E,
     T,
     F,
+    L,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
-pub enum Value {
+pub enum TokenValue {
+    Identifier(String),
     Integer(u64),
     Plus(AddOperation),
     Mul(MulOperation),
@@ -59,62 +65,15 @@ pub enum TokenKind {
     Skip,
     LParen,
     RParen,
+    Assign,
+    Name,
+    Separator,
 }
 
-fn interpret_tree(mut tree: SyntaxTree<TokenKind, NonTerminal, Value>) -> Result<u64, ()> {
-    match tree.rule_applied {
-        Some(i) => {
-            if i == 1 {
-                let rhs = interpret_tree(tree.children.pop().unwrap())?;
-                let operation = tree.children.pop().unwrap().symbol;
-                let lhs = interpret_tree(tree.children.pop().unwrap())?;
-                match operation {
-                    Symbol::Terminal(ValuedToken {
-                        token: _,
-                        value: Some(Value::Plus(add_op)),
-                    }) => match add_op {
-                        AddOperation::Plus => Ok(lhs + rhs),
-                        AddOperation::Minus => Ok(lhs - rhs),
-                    },
-                    _ => Err(()),
-                }
-            } else if i == 2 {
-                interpret_tree(tree.children.pop().unwrap())
-            } else if i == 3 {
-                let rhs = interpret_tree(tree.children.pop().unwrap())?;
-                let operation = tree.children.pop().unwrap().symbol;
-                let lhs = interpret_tree(tree.children.pop().unwrap())?;
-                match operation {
-                    Symbol::Terminal(ValuedToken {
-                        token: _,
-                        value: Some(Value::Mul(mul_op)),
-                    }) => match mul_op {
-                        MulOperation::Times => Ok(lhs * rhs),
-                        MulOperation::Div => Ok(lhs / rhs),
-                    },
-                    _ => Err(()),
-                }
-            } else if i == 4 {
-                interpret_tree(tree.children.pop().unwrap())
-            } else if i == 5 {
-                tree.children.pop();
-                interpret_tree(tree.children.pop().unwrap())
-            } else if i == 6 {
-                interpret_tree(tree.children.pop().unwrap())
-            } else {
-                Err(())
-            }
-        }
-        None => match tree.symbol {
-            Symbol::Terminal(t) => match t.token {
-                TokenKind::Int => match t.value {
-                    Some(Value::Integer(n)) => Ok(n),
-                    _ => Err(()),
-                },
-                _ => Err(()),
-            },
-            _ => Err(()),
-        },
+#[allow(dead_code)]
+fn print_grammar(grammar: &[Rule<TokenKind, NonTerminal>]) {
+    for rule in grammar {
+        println!("({}) {:?} -> {:?}", rule.index, rule.lhs, rule.rhs)
     }
 }
 
@@ -136,25 +95,85 @@ fn main() {
             rule_rhs![TokenKind::LParen, (NonTerminal::E), TokenKind::RParen],
         ),
         (NonTerminal::F, rule_rhs![TokenKind::Int]),
+        (
+            NonTerminal::L,
+            rule_rhs![(NonTerminal::E), TokenKind::Separator, (NonTerminal::L)],
+        ),
+        (NonTerminal::L, rule_rhs![(NonTerminal::E)]),
+        (
+            NonTerminal::F,
+            rule_rhs![
+                TokenKind::Name,
+                TokenKind::LParen,
+                (NonTerminal::L),
+                TokenKind::RParen
+            ],
+        ),
     ]);
 
-    let input_litteral = "(9 * 4 + 12 * ( 42 + 3 ) * 42 - ( (5 - 2) * 6 + 3 ))";
-    let input = TokenStream::new(input_litteral.to_string()).filter(|t| {
-        if let ValuedToken {
-            token: TokenKind::Skip,
-            value: _,
-        } = t
-        {
-            false
-        } else {
-            true
-        }
-    });
-
     let start_rule = grammar[0].clone();
-    let parse_table = ParseTable::new(grammar, start_rule).unwrap();
+    //print_grammar(&grammar);
+    let parse_table = ParseTable::new(grammar.clone(), start_rule).unwrap();
     //parse_table.print_tables();
     let mut parser = Parser::new(parse_table);
-    let tree = parser.parse(input).unwrap();
-    println!("{} = {:?}", input_litteral, interpret_tree(tree));
+
+    let mut rl = completer::get_editor();
+    loop {
+        let readline = rl.readline(">> ");
+        match readline {
+            Ok(line) => {
+                if line == "quit" {
+                    println!("Bye !");
+                    break;
+                }
+                if line == "grammar" {
+                    print_grammar(&grammar);
+                    continue;
+                }
+                rl.add_history_entry(line.as_str());
+                let input = TokenStream::new(line).filter(|t| {
+                    if let ValuedToken {
+                        token: TokenKind::Skip,
+                        ..
+                    } = t
+                    {
+                        false
+                    } else {
+                        true
+                    }
+                });
+                let tree = match parser.parse(input) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        continue;
+                    }
+                };
+                match interpret::interpret_tree(tree) {
+                    Ok(n) => println!("-> {}", n),
+                    Err(interpret::EvalError::InvalidArguments {
+                        function: f,
+                        got: n,
+                        expected: e,
+                    }) => eprintln!(
+                        "Invalid number of arguments for {}: expected {} got {}",
+                        f, e, n
+                    ),
+                    Err(interpret::EvalError::UnknownLitteral(s)) => {
+                        eprintln!("Unknown symbol: {}", s)
+                    }
+                    Err(e) => eprintln!("Internal Error: {:?}", e),
+                }
+            }
+            Err(ReadlineError::Interrupted) => (),
+            Err(ReadlineError::Eof) => {
+                println!("Bye !");
+                break;
+            }
+            Err(err) => {
+                eprintln!("Error: {}", err);
+                break;
+            }
+        }
+    }
 }

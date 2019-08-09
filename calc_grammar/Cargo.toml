@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 stelar = { path = "../stelar" , features = ["print_table"]}
+rustyline = "5.0.1"

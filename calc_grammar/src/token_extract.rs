@@ -1,6 +1,18 @@
-use super::{AddOperation, MulOperation, TokenKind, Value};
+use super::{AddOperation, MulOperation, TokenKind, TokenValue};
 use stelar::{Extract, ValuedToken};
 
+fn is_separator(s: &str) -> bool {
+    s == ","
+}
+fn is_name(s: &str) -> bool {
+    s.chars().all(char::is_alphabetic)
+}
+fn is_assign(s: &str) -> bool {
+    match s {
+        "=" | ":=" => true,
+        _ => false,
+    }
+}
 fn is_integer(s: &str) -> bool {
     s.parse::<u64>().is_ok()
 }
@@ -35,13 +47,16 @@ fn is_rparen(s: &str) -> bool {
     }
 }
 impl Extract<String> for TokenKind {
-    type Value = Value;
-    fn extract(input: &mut String) -> Option<ValuedToken<Self, Value>> {
+    type Value = TokenValue;
+    fn extract(input: &mut String) -> Option<ValuedToken<Self, TokenValue>> {
         let mut possible = None;
         let mut max_valid = 1;
-        if input.len() == 0 {
+        if input.is_empty() {
             return None;
         } else if input.len() == 1 {
+            if is_name(input) {
+                possible = Some(TokenKind::Name)
+            }
             if is_skip(input) {
                 possible = Some(TokenKind::Skip);
             }
@@ -57,11 +72,21 @@ impl Extract<String> for TokenKind {
             if is_lparen(input) {
                 possible = Some(TokenKind::RParen);
             }
+            if is_assign(input) {
+                possible = Some(TokenKind::Assign);
+            }
+            if is_separator(input) {
+                possible = Some(TokenKind::Separator);
+            }
         } else {
-            for i in 1..input.len() {
+            for i in 1..=input.len() {
                 let mut has_valid = false;
                 let sub = &input[0..i];
                 max_valid = i;
+                if is_name(sub) {
+                    has_valid = true;
+                    possible = Some(TokenKind::Name);
+                }
                 if is_integer(sub) {
                     has_valid = true;
                     possible = Some(TokenKind::Int);
@@ -86,6 +111,14 @@ impl Extract<String> for TokenKind {
                     has_valid = true;
                     possible = Some(TokenKind::Skip);
                 }
+                if is_assign(sub) {
+                    has_valid = true;
+                    possible = Some(TokenKind::Assign);
+                }
+                if is_separator(sub) {
+                    has_valid = true;
+                    possible = Some(TokenKind::Separator);
+                }
                 if !has_valid {
                     max_valid = i - 1;
                     break;
@@ -98,15 +131,15 @@ impl Extract<String> for TokenKind {
         match possible {
             Some(TokenKind::Int) => Some(ValuedToken {
                 token: TokenKind::Int,
-                value: Some(Value::Integer(token.parse().unwrap())),
+                value: Some(TokenValue::Integer(token.parse().unwrap())),
             }),
             Some(TokenKind::AddOp) => Some(ValuedToken {
                 token: TokenKind::AddOp,
-                value: Some(Value::Plus(AddOperation::from_string(&token).unwrap())),
+                value: Some(TokenValue::Plus(AddOperation::from_string(&token).unwrap())),
             }),
             Some(TokenKind::MulOp) => Some(ValuedToken {
                 token: TokenKind::MulOp,
-                value: Some(Value::Mul(MulOperation::from_string(&token).unwrap())),
+                value: Some(TokenValue::Mul(MulOperation::from_string(&token).unwrap())),
             }),
             Some(TokenKind::LParen) => Some(ValuedToken {
                 token: TokenKind::LParen,
@@ -118,6 +151,18 @@ impl Extract<String> for TokenKind {
             }),
             Some(TokenKind::Skip) => Some(ValuedToken {
                 token: TokenKind::Skip,
+                value: None,
+            }),
+            Some(TokenKind::Name) => Some(ValuedToken {
+                token: TokenKind::Name,
+                value: Some(TokenValue::Identifier(token)),
+            }),
+            Some(TokenKind::Assign) => Some(ValuedToken {
+                token: TokenKind::Assign,
+                value: None,
+            }),
+            Some(TokenKind::Separator) => Some(ValuedToken {
+                token: TokenKind::Separator,
                 value: None,
             }),
             None => None,
