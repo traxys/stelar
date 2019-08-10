@@ -52,7 +52,7 @@ pub enum NonTerminal {
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum TokenValue {
-    Identifier(String),
+    Litteral(String),
     Integer(u64),
     Plus(AddOperation),
     Mul(MulOperation),
@@ -69,6 +69,8 @@ pub enum TokenKind {
     Assign,
     Name,
     Separator,
+    RawStr,
+    Quote,
 }
 
 #[allow(dead_code)]
@@ -120,12 +122,15 @@ fn main() {
             rule_rhs![TokenKind::Name, TokenKind::Assign, (NonTerminal::Expr)],
         ),
         (NonTerminal::Term, rule_rhs![TokenKind::Name]),
+        (
+            NonTerminal::Expr,
+            rule_rhs![TokenKind::Quote, TokenKind::RawStr, TokenKind::Quote],
+        ),
     ]);
 
     let start_rule = grammar[0].clone();
-    //print_grammar(&grammar);
     let parse_table = ParseTable::new(grammar.clone(), start_rule).unwrap();
-    //parse_table.print_tables();
+    // parse_table.print_tables();
     let mut parser = Parser::new(parse_table);
     let mut print_stream = false;
 
@@ -148,7 +153,7 @@ fn main() {
                     continue;
                 }
                 rl.add_history_entry(line.as_str());
-                let input = TokenStream::new(line)
+                let input = TokenStream::new(line, token_extract::TokenContext::new())
                     .inspect(|t| {
                         if print_stream {
                             println!("{:?}", t)

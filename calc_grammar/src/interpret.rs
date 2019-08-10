@@ -6,12 +6,14 @@ type AST = SyntaxTree<crate::TokenKind, crate::NonTerminal, crate::TokenValue>;
 pub enum ValueKind {
     Integer,
     Str,
+    Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
     Integer(u64),
     Str(String),
+    Type(ValueKind),
 }
 
 impl Value {
@@ -19,6 +21,7 @@ impl Value {
         match self {
             Value::Integer(_) => ValueKind::Integer,
             Value::Str(_) => ValueKind::Str,
+            Value::Type(_) => ValueKind::Type,
         }
     }
     pub fn to_integer(self) -> u64 {
@@ -33,12 +36,22 @@ impl Value {
             _ => panic!("Value is {:?}", self.kind()),
         }
     }
+    pub fn to_type(self) -> ValueKind {
+        match self {
+            Value::Type(t) => t,
+            _ => panic!("Value is {:?}", self.kind()),
+        }
+    }
 
     pub fn as_string(self) -> Value {
         match self {
+            Value::Type(t) => Value::Str(format!("{:?}", t)),
             Value::Integer(u) => Value::Str(format!("{}", u)),
             s => s,
         }
+    }
+    fn as_type(&self) -> Value {
+        Value::Type(self.kind())
     }
 
     pub fn assert_type(&self, kind: Option<ValueKind>) -> Result<(), TypeError> {
@@ -60,9 +73,10 @@ impl Value {
 
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self {
+        match self {
             Value::Integer(u) => write!(f, "{}", u),
             Value::Str(s) => write!(f, "{}", s),
+            Value::Type(t) => write!(f, "{:?}", t),
         }
     }
 }
@@ -195,10 +209,31 @@ fn get_builtins<'a>() -> BuiltInMap<'a> {
         },
     );
     map.insert(
+        "concat".to_string(),
+        BuiltIn {
+            f: &|mut args| {
+                let b = args.pop().unwrap().to_string();
+                let mut a = args.pop().unwrap().to_string();
+                a.push_str(&b);
+                Value::Str(a)
+            },
+            name: "concat".to_string(),
+            expected: &[Some(ValueKind::Str), Some(ValueKind::Str)],
+        },
+    );
+    map.insert(
         "str".to_string(),
         BuiltIn {
             f: &|mut args| args.pop().unwrap().as_string(),
             name: "str".to_string(),
+            expected: &[None],
+        },
+    );
+    map.insert(
+        "type".to_string(),
+        BuiltIn {
+            f: &|mut args| args.pop().unwrap().as_type(),
+            name: "type".to_string(),
             expected: &[None],
         },
     );
@@ -323,7 +358,7 @@ fn interpret_expression(mut tree: AST, ctx: &mut Context) -> Result<Value, EvalE
                 tree.children.pop().unwrap();
                 let name = match tree.children.pop().unwrap().symbol {
                     Symbol::Terminal(crate::ValuedToken {
-                        value: Some(crate::TokenValue::Identifier(name)),
+                        value: Some(crate::TokenValue::Litteral(name)),
                         ..
                     }) => name,
                     Symbol::Terminal(malformed) => {
@@ -345,21 +380,21 @@ fn interpret_expression(mut tree: AST, ctx: &mut Context) -> Result<Value, EvalE
             } else if i == 12 {
                 let name = match tree.children.pop().unwrap().symbol {
                     Symbol::Terminal(crate::ValuedToken {
-                        value: Some(crate::TokenValue::Identifier(name)),
+                        value: Some(crate::TokenValue::Litteral(name)),
                         ..
                     }) => name,
                     Symbol::Terminal(malformed) => {
                         return Err(EvalError::MalformedToken {
                             got: malformed,
                             expected: crate::TokenKind::Name,
-                            rule: 9,
+                            rule: 12,
                         })
                     }
                     Symbol::NonTerminal(invalid) => {
                         return Err(EvalError::InvalidNonTerminal {
                             got: invalid,
                             expected: crate::TokenKind::Name,
-                            rule: 9,
+                            rule: 12,
                         })
                     }
                 };
@@ -367,6 +402,29 @@ fn interpret_expression(mut tree: AST, ctx: &mut Context) -> Result<Value, EvalE
                     Some(n) => Ok(n.clone()),
                     None => Err(EvalError::UnknownLitteral(name)),
                 }
+            } else if i == 13 {
+                tree.children.pop();
+                let string = match tree.children.pop().unwrap().symbol {
+                    Symbol::Terminal(crate::ValuedToken {
+                        token: crate::TokenKind::RawStr,
+                        value: Some(crate::TokenValue::Litteral(string)),
+                    }) => string,
+                    Symbol::Terminal(malformed) => {
+                        return Err(EvalError::MalformedToken {
+                            got: malformed,
+                            expected: crate::TokenKind::RawStr,
+                            rule: 13,
+                        })
+                    }
+                    Symbol::NonTerminal(invalid) => {
+                        return Err(EvalError::InvalidNonTerminal {
+                            got: invalid,
+                            expected: crate::TokenKind::RawStr,
+                            rule: 13,
+                        })
+                    }
+                };
+                Ok(Value::Str(string))
             } else {
                 Err(EvalError::InvalideRule {
                     context: crate::NonTerminal::Expr,
@@ -400,7 +458,7 @@ fn interpret_statement(mut tree: AST, ctx: &mut Context) -> Result<Option<Value>
                 tree.children.pop().unwrap();
                 let name = match tree.children.pop().unwrap().symbol {
                     Symbol::Terminal(crate::ValuedToken {
-                        value: Some(crate::TokenValue::Identifier(name)),
+                        value: Some(crate::TokenValue::Litteral(name)),
                         ..
                     }) => name,
                     Symbol::Terminal(malformed) => {
